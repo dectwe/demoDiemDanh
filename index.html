@@ -56,9 +56,9 @@
     statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
     
     // Tải các cấu trúc mạng AI trực tiếp từ bộ nhớ GitHub của bạn
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    await faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_URL);
+    await faceapi.nets.faceLandmarks68Net.loadFromDisk(MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromDisk(MODEL_URL);
     
     statusDiv.style.color = "blue";
     statusDiv.innerText = "Mạng AI nội bộ đã nạp xong! Đang tải dữ liệu học sinh từ Sheets...";

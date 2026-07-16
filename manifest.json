@@ -1,0 +1,16 @@
+{
+  "name": "Hệ Thống Điểm Danh AI",
+  "short_name": "AI Attendance",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#007bff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3001/3001764.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

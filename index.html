@@ -41,27 +41,36 @@
     let faceMatcher = null;
 
     async function init() {
-      // Kiểm tra xem thư viện đã được load vào window chưa
-      if (typeof faceapi === 'undefined') {
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi: Trình duyệt chưa tải được thư viện face-api. Hãy kiểm tra kết nối mạng!";
-        return;
-      }
+  // 1. Luôn mở camera trước để đảm bảo phần cứng hoạt động độc lập
+  startCamera();
 
-      try {
-        // Tải các cấu trúc mạng AI từ Cloud CDN
-        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        
-        statusDiv.innerText = "Đang tải dữ liệu học sinh từ Google Sheets...";
-        await loadStudentsData();
-      } catch (error) {
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
-        console.error(error);
-      }
-    }
+  // 2. Kiểm tra xem đối tượng faceapi đã sẵn sàng trong trình duyệt chưa
+  if (typeof faceapi === 'undefined') {
+    statusDiv.style.color = "red";
+    statusDiv.innerText = "Lỗi: Trình duyệt chưa kích hoạt được thư viện face-api local. Hãy kiểm tra lại thẻ nhúng <script> ở đầu file!";
+    return;
+  }
+
+  try {
+    statusDiv.style.color = "#555";
+    statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
+    
+    // Tải các cấu trúc mạng AI trực tiếp từ bộ nhớ GitHub của bạn
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    
+    statusDiv.style.color = "blue";
+    statusDiv.innerText = "Mạng AI nội bộ đã nạp xong! Đang tải dữ liệu học sinh từ Sheets...";
+    
+    // Gọi hàm lấy dữ liệu từ Google Sheets
+    await loadStudentsData();
+  } catch (error) {
+    statusDiv.style.color = "red";
+    statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
+    console.error("Chi tiết lỗi nạp model:", error);
+  }
+}
 
     async function loadStudentsData() {
       try {

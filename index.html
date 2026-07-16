@@ -10,35 +10,39 @@
     body { font-family: Arial, sans-serif; text-align: center; margin: 20px; background: #eef2f7; }
     .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     #video-container { position: relative; margin: 15px auto; width: 320px; height: 240px; background: #000; border-radius: 8px; overflow: hidden; }
-    /* Lật gương camera trước cho tự nhiên */
+    /* Lật gương camera trước cho tự nhiên giống selfie */
     video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); } 
-    .status { font-size: 18px; font-weight: bold; margin: 15px; color: #333; }
-    .success-alert { color: green; font-size: 20px; animation: flash 1s infinite; }
-    @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .status { font-size: 16px; font-weight: bold; margin: 15px; color: #333; }
+    .success-alert { color: green; font-size: 20px; font-weight: bold; }
   </style>
 </head>
 <body>
 
 <div class="container">
   <h2>📸 HỆ THỐNG ĐIỂM DANH AUTOMATIC</h2>
-  <div class="status" id="status">Đang đồng bộ dữ liệu lớp học...</div>
+  <div class="status" id="status">Đang tải mạng AI từ Cloud...</div>
   
   <div id="video-container">
     <video id="video" autoplay playsinline muted></video>
   </div>
   
-  <div id="result-box" style="margin-top: 10px;"></div>
+  <div id="result-box" style="margin-top: 10px; font-weight: bold;"></div>
   <p><a href="register.html">➔ Đi đến trang thêm Học Sinh mới</a></p>
 </div>
 
 <script>
+  // ⚠️ THAY URL WEB APP GOOGLE APPS SCRIPT CỦA BẠN VÀO ĐÂY
   const GAS_API = "THAY_URL_DEPLOY_GAS_CỦA_BẠN_VÀO_ĐÂY"; 
+  
+  // Link CDN chứa các file Model AI trực tuyến công cộng
+  const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
+
   const video = document.getElementById('video');
   const statusDiv = document.getElementById('status');
   const resultBox = document.getElementById('result-box');
   
   let faceMatcher = null;
-  let isProcessing = false; // Cờ chặn việc gửi trùng lặp request khi quét real-time
+  let isProcessing = false; // Cờ ngăn việc gửi trùng lặp request liên tục
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
@@ -47,33 +51,34 @@
   async function init() {
     try {
       // 1. Tải các cấu trúc mạng AI
-      await faceapi.nets.ssdMobilenetv1.loadFromUri('./models');
-      await faceapi.nets.faceLandmarks68細.loadFromUri('./models');
-      await faceapi.nets.faceRecognitionNet.loadFromUri('./models');
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
       
       statusDiv.innerText = "Đang tải danh sách học sinh từ Google Sheet...";
       
-      // 2. GET lấy toàn bộ dữ liệu vector của cả lớp từ Google Sheets về máy
+      // 2. Lấy dữ liệu vector từ Google Sheets
       const response = await fetch(GAS_API);
       const resData = await response.json();
       
       if(resData.status === "success" && resData.data.length > 0) {
         const labeledDescriptors = resData.data.map(student => {
           const vector = new Float32Array(JSON.parse(student.faceVector));
-          // Định danh mỗi học sinh bằng chuỗi ghép "MSSV_HọTên"
+          // Định danh bằng chuỗi kết hợp "MSSV_HọTên"
           return new faceapi.LabeledFaceDescriptors(`${student.mssv}_${student.hoten}`, [vector]);
         });
         
-        // Tạo bộ so khớp dữ liệu khuôn mặt với độ sai số tối đa 0.5 (Khớp > 50% là nhận diện)
+        // Ngưỡng sai số 0.5 (Tỷ lệ khớp > 50% sẽ được công nhận danh tính)
         faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
         
-        statusDiv.innerText = "Dữ liệu lớp học đồng bộ xong! Mở camera điểm danh...";
+        statusDiv.innerText = "Dữ liệu lớp học đồng bộ xong! Hãy nhìn vào camera...";
         startCamera();
       } else {
-        statusDiv.innerText = "Chưa có dữ liệu học sinh trong Sheet. Hãy đăng ký trước!";
+        statusDiv.innerText = "Chưa có học sinh nào trong hệ thống. Vui lòng đăng ký trước!";
       }
     } catch (err) {
       statusDiv.innerText = "Lỗi khởi động hệ thống: " + err.message;
+      console.error(err);
     }
   }
 
@@ -82,8 +87,10 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
       .then(stream => {
         video.srcObject = stream;
-        // Lắng nghe khi camera bắt đầu phát để quét real-time liên tục
         video.addEventListener('play', onPlay);
+      })
+      .catch(err => {
+        statusDiv.innerText = "Không thể mở camera trước. Hãy kiểm tra lại quyền truy cập.";
       });
   }
 
@@ -91,33 +98,29 @@
   async function onPlay() {
     if (video.paused || video.ended || !faceMatcher) return;
     
-    // Chỉ xử lý quét diện mạo nếu hệ thống không trong trạng thái "chờ API phản hồi"
     if (!isProcessing) {
       const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
       
       if (detection) {
-        // So sánh khuôn mặt tìm được với Database cục bộ trong RAM máy
         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-        const label = bestMatch.toString(); // Trả ra dạng: "MSSV_HoTen (0.35)"
+        const label = bestMatch.toString();
         
         if (!label.includes("unknown")) {
-          // Tách chuỗi lấy thông tin cá nhân
           const info = bestMatch.label.split("_");
           const mssv = info[0];
           const hoten = info[1];
           
-          // Phát hiện đúng học sinh -> Gọi hàm kích hoạt điểm danh lên Google Sheet
-          isProcessing = true; 
+          isProcessing = true; // Khóa tiến trình tạm thời để tránh spam request
           triggerCheckIn(mssv, hoten);
         } else {
           resultBox.innerHTML = `<span style="color:red">Khuôn mặt lạ (Không khớp dữ liệu lớp)</span>`;
         }
       } else {
-        resultBox.innerHTML = `<span>Đang tìm khuôn mặt...</span>`;
+        resultBox.innerHTML = `<span style="color:gray">Đang quét tìm khuôn mặt...</span>`;
       }
     }
     
-    // Đệ quy gọi lại hàm sau 500ms để liên tục bắt khung hình mới mà không làm đơ máy
+    // Thực hiện lại sau 500ms (giúp điện thoại không bị quá tải CPU như quét liên tục)
     setTimeout(() => onPlay(), 500);
   }
 
@@ -137,9 +140,9 @@
       body: JSON.stringify(payload)
     })
     .then(() => {
-      resultBox.innerHTML = `<div style="color:green; font-size:24px; font-weight:bold;">✅ ĐÃ ĐIỂM DANH: <br> ${hoten}</div>`;
+      resultBox.innerHTML = `<div style="color:green; font-size:22px;">✅ ĐÃ ĐIỂM DANH: <br> <strong>${hoten}</strong></div>`;
       
-      // Khóa màn hình thông báo thành công trong 4 giây rồi mới mở lại cho học sinh tiếp theo quét
+      // Chờ hiển thị thông báo thành công trong 4 giây rồi mới tiếp tục quét người mới
       setTimeout(() => {
         isProcessing = false;
         resultBox.innerHTML = "";
@@ -147,6 +150,7 @@
     })
     .catch(err => {
       isProcessing = false;
+      resultBox.innerHTML = `<span style="color:red">Lỗi ghi nhận điểm danh!</span>`;
     });
   }
 

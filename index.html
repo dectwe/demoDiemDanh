@@ -38,10 +38,10 @@
     const MODEL_URL = './face-api.js-master/weights/';
     let faceMatcher = null;
 
-    // --- CƠ CHẾ KHÓA CHỐNG TRÙNG LẶP NÂNG CAO ---
-    let isSending = false;              // Khóa tổng: Ngăn quét khi đang trong quá trình Fetch mạng
-    const attendanceRegistry = {};     // Bản đồ lưu mốc thời gian: { "Nguyen Van A": mốc_mili_giây, "Tran Van B": mốc_mili_giây }
-    const COOLDOWN_TIME = 20000;        // Thời gian khóa mỗi người (20 giây) để tránh spam
+      // --- CƠ CHẾ KHÓA CHỐNG TRÙNG LẶP NÂNG CAO ---
+    let isProcessing = false;           // Khóa vạn năng: Bật khi AI đang phân tích HOẶC đang gửi mạng
+    const attendanceRegistry = {};     // Bản đồ lưu mốc thời gian khóa từng người
+    const COOLDOWN_TIME = 30000;        // Tăng thời gian khóa lên 30 giây cho chắc chắn không bị spam
 
     async function init() {
       startCamera();
@@ -114,44 +114,57 @@
     }
 
     async function recognizeFace() {
-      // Nếu AI chưa sẵn sàng hoặc hệ thống đang bận gửi một request khác lên mạng thì bỏ qua lượt quét này
-      if (!faceMatcher || isSending) return;
+      // Nếu hệ thống đang bận xử lý (quét mặt/gửi mạng) thì hủy ngay lượt quét này để tránh chồng chéo luồng
+      if (!faceMatcher || isProcessing) return;
       
-      const detection = await faceapi.detectSingleFace(video)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-        
-      if (detection) {
-        const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-        const recognizedName = bestMatch.label;
+      // Kích hoạt khóa vạn năng ngay lập tức khi bắt đầu quét
+      isProcessing = true; 
 
-        if (recognizedName !== 'unknown') {
-          const now = Date.now();
-          const lastCheckedTime = attendanceRegistry[recognizedName] || 0;
+      try {
+        const detection = await faceapi.detectSingleFace(video)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+          
+        if (detection) {
+          const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+          const recognizedName = bestMatch.label;
 
-          // KIỂM TRA COOLDOWN RIÊNG BIỆT: Nếu người này vừa quét chưa quá 20 giây
-          if ((now - lastCheckedTime) < COOLDOWN_TIME) {
-            const timeLeft = Math.ceil((COOLDOWN_TIME - (now - lastCheckedTime)) / 1000);
-            statusDiv.style.color = "purple";
-            statusDiv.innerText = `⏳ [Chờ] ${recognizedName} đã được ghi nhận. Vui lòng đợi ${timeLeft}s.`;
-            return; 
+          if (recognizedName !== 'unknown') {
+            const now = Date.now();
+            const lastCheckedTime = attendanceRegistry[recognizedName] || 0;
+
+            // KIỂM TRA COOLDOWN: Nếu người này vừa quét chưa quá 30 giây
+            if ((now - lastCheckedTime) < COOLDOWN_TIME) {
+              const timeLeft = Math.ceil((COOLDOWN_TIME - (now - lastCheckedTime)) / 1000);
+              statusDiv.style.color = "purple";
+              statusDiv.innerText = `⏳ [Chờ] ${recognizedName} đã điểm danh. Vui lòng đợi ${timeLeft}s.`;
+              
+              // Mở khóa vạn năng vì lượt này chỉ là thông báo chờ, không gửi mạng
+              isProcessing = false; 
+              return; 
+            }
+
+            // Cập nhật mốc thời gian khóa người này tại Frontend ngay lập tức
+            attendanceRegistry[recognizedName] = now;
+
+            statusDiv.style.color = "blue";
+            statusDiv.innerText = `🎉 Nhận diện: ${recognizedName}! Đang ghi nhận lên Google Sheets...`;
+            
+            // Tiến hành gửi mạng và ĐỢI cho đến khi kết thúc hoàn toàn
+            await sendAttendance(recognizedName);
+          } else {
+            statusDiv.style.color = "orange";
+            statusDiv.innerText = "⚠️ Khuôn mặt chưa rõ nét hoặc không khớp danh sách!";
+            // Mở khóa để lượt sau quét tiếp
+            isProcessing = false; 
           }
-
-          // Kích hoạt khóa tổng ngay lập tức để chặn các lượt quét trùng lặp trong lúc Fetch
-          isSending = true; 
-          
-          // Cập nhật mốc thời gian khóa người này ngay tại Frontend trước khi gửi dữ liệu lên mạng
-          attendanceRegistry[recognizedName] = now;
-
-          statusDiv.style.color = "blue";
-          statusDiv.innerText = `🎉 Nhận diện: ${recognizedName}! Đang gửi dữ liệu lên Google Sheets...`;
-          
-          // Chờ hàm sendAttendance thực hiện xong hoàn toàn
-          await sendAttendance(recognizedName);
         } else {
-          statusDiv.style.color = "orange";
-          statusDiv.innerText = "⚠️ Khuôn mặt lạ, không khớp với danh sách!";
+          // Không thấy khuôn mặt nào trước cam, mở khóa cho lượt sau
+          isProcessing = false; 
         }
+      } catch (err) {
+        console.error("Lỗi trong quá trình nhận diện:", err);
+        isProcessing = false; // Đảm bảo luôn mở khóa nếu code gặp crash ngầm
       }
     }
 
@@ -162,7 +175,6 @@
           headers: { 
             'Content-Type': 'text/plain;charset=utf-8' 
           },
-          // Gửi chính xác tên đã được bóc tách riêng tại thời điểm nhận diện
           body: JSON.stringify({ action: 'checkin', name: nameToSend })
         });
         
@@ -173,15 +185,14 @@
           statusDiv.innerText = `✅ ĐÃ ĐIỂM DANH THÀNH CÔNG: ${nameToSend}`;
         } else {
           statusDiv.style.color = "red";
-          statusDiv.innerText = `❌ Lỗi ghi nhận từ Sheet: ` + result.message;
+          statusDiv.innerText = `❌ Lỗi từ Sheet: ` + result.message;
         }
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi đường truyền: " + error.message;
-        console.error("Chi tiết lỗi gửi:", error);
+        statusDiv.innerText = "Lỗi đường truyền mạng: " + error.message;
       } finally {
-        // Giải phóng khóa tổng để cho phép hệ thống nhận diện học sinh tiếp theo bước vào
-        isSending = false;
+        // CHỈ mở khóa vạn năng sau khi Google Sheets đã xử lý xong và phản hồi mạng thành công!
+        isProcessing = false;
       }
     }
 

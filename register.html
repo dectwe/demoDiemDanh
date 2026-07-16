@@ -121,11 +121,9 @@
       const descriptorArray = Array.from(detection.descriptor);
 
       try {
-        // Thay đổi cấu trúc Fetch để bypass CORS của Google Apps Script chuẩn xác
         const response = await fetch(GAS_API, {
           method: 'POST',
           headers: {
-            // Sử dụng text/plain nhưng gửi chuỗi JSON, đây là mẹo kinh điển để Apps Script nhận được dữ liệu không bị chặn CORS
             'Content-Type': 'text/plain;charset=utf-8' 
           },
           body: JSON.stringify({
@@ -135,18 +133,25 @@
           })
         });
 
-        // Nếu bạn muốn kiểm tra xem Google Script thực sự trả về gì (nếu có cấu hình trả về)
-        statusDiv.style.color = "green";
-        statusDiv.innerText = `✅ Đăng ký thành công dữ liệu cho: ${name}`;
-        studentNameInput.value = "";
+        // ĐỌC PHẢN HỒI THỰC TẾ TỪ GOOGLE APPS SCRIPT
+        const result = await response.json(); 
+
+        if (result.status === "success") {
+          statusDiv.style.color = "green";
+          statusDiv.innerText = `✅ Đăng ký THÀNH CÔNG dữ liệu cho: ${name}`;
+          studentNameInput.value = "";
+        } else {
+          // Nếu Google Apps Script trả về lỗi, nó sẽ hiển thị ở đây
+          statusDiv.style.color = "red";
+          statusDiv.innerText = `❌ Lỗi từ Google Sheet: ${result.message}`;
+        }
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi đồng bộ: " + error.message;
+        statusDiv.innerText = "Lỗi đồng bộ (Network): " + error.message;
         console.error(error);
       } finally {
         regBtn.disabled = false;
       }
-    }
 
     window.onload = init;
   </script>

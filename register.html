@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Điểm Danh - Đăng Ký Khuôn Mặt</title>
   
-  <script src="./face-api.js-master/dist/face-api.js"></script>
+  <script src="face-api-local.js"></script>
   
   <style>
     body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
@@ -24,7 +24,7 @@
 <body>
 
   <h2>👤 Đăng Ký Khuôn Mặt Học Sinh</h2>
-  <div id="status">Đang tải cấu trúc mạng AI từ Cloud...</div>
+  <div id="status">Đang tải cấu trúc mạng AI...</div>
 
   <div class="video-container">
     <video id="video" autoplay playsinline muted></video>
@@ -43,56 +43,43 @@
     const studentNameInput = document.getElementById('studentName');
     const regBtn = document.getElementById('regBtn');
     
-    // ⚠️ HÃY THAY LINK WEB APP GOOGLE APPS SCRIPT (/exec) CỦA BẠN VÀO ĐÂY
     const GAS_API = "https://script.google.com/macros/s/AKfycbz5PqDeWM_GxZaoecHDO_k7JiT4RNpOIP7UsTiQ1Cwar34b9y9w57bxbK23Ssd2BlK5/exec";
-    
     const MODEL_URL = './face-api.js-master/weights/';
 
     async function init() {
-  // 1. Luôn mở camera trước để đảm bảo phần cứng hoạt động độc lập
-  startCamera();
+      startCamera();
 
-  // 2. Kiểm tra xem đối tượng faceapi đã sẵn sàng trong trình duyệt chưa
-  if (typeof faceapi === 'undefined') {
-    statusDiv.style.color = "red";
-    statusDiv.innerText = "Lỗi: Trình duyệt chưa kích hoạt được thư viện face-api local. Hãy kiểm tra lại thẻ nhúng <script> ở đầu file!";
-    return;
-  }
+      if (typeof faceapi === 'undefined') {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi: Trình duyệt chưa kích hoạt được thư viện face-api local!";
+        return;
+      }
 
-  try {
-    statusDiv.style.color = "#555";
-    statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
-    
-    // Tải các cấu trúc mạng AI trực tiếp từ bộ nhớ GitHub của bạn
-    await faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_URL);
-    await faceapi.nets.faceLandmarks68Net.loadFromDisk(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromDisk(MODEL_URL);
-    
-    statusDiv.style.color = "blue";
-    statusDiv.innerText = "Mạng AI nội bộ đã nạp xong! Đang tải dữ liệu học sinh từ Sheets...";
-    
-    // Gọi hàm lấy dữ liệu từ Google Sheets
-    await loadStudentsData();
-  } catch (error) {
-    statusDiv.style.color = "red";
-    statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
-    console.error("Chi tiết lỗi nạp model:", error);
-  }
-}
+      try {
+        statusDiv.style.color = "#555";
+        statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
+        
+        // Cập nhật từ loadFromDisk sang loadFromUri chuẩn Web Browser
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        
+        statusDiv.style.color = "green";
+        statusDiv.innerText = "Mạng AI đã sẵn sàng! Mời nhập tên và chụp hình khuôn mặt.";
+        studentNameInput.disabled = false;
+        regBtn.disabled = false;
+      } catch (error) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
+        console.error(error);
+      }
+    }
 
     function startCamera() {
-      const constraints = {
-        audio: false,
-        video: { facingMode: "environment", width: 320, height: 240 } // Cam sau cho đăng ký
-      };
-
+      const constraints = { audio: false, video: { facingMode: "environment", width: 320, height: 240 } };
       navigator.mediaDevices.getUserMedia(constraints)
         .then(stream => {
           video.srcObject = stream;
-          statusDiv.style.color = "green";
-          statusDiv.innerText = "Camera đã sẵn sàng! Mời nhập tên và chụp hình khuôn mặt.";
-          studentNameInput.disabled = false;
-          regBtn.disabled = false;
         })
         .catch(err => {
           statusDiv.style.color = "red";
@@ -101,7 +88,7 @@
               <div class="alert-box">
                 <p>⚠️ <strong>Chưa cấp quyền Camera!</strong></p>
                 <p style="font-size: 14px; color: #555; margin:0;">
-                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Chọn <strong>Cho phép Camera</strong>, sau đó tải lại trang.
+                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> trên thanh địa chỉ ➔ Chọn <strong>Cho phép Camera</strong>.
                 </p>
               </div>`;
           } else {
@@ -121,9 +108,7 @@
       statusDiv.style.color = "#555";
       statusDiv.innerText = "Đang phân tích khuôn mặt... Giữ yên camera.";
 
-      const detection = await faceapi.detectSingleFace(video)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+      const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
 
       if (!detection) {
         statusDiv.style.color = "red";
@@ -140,11 +125,7 @@
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'register',
-            name: name,
-            descriptor: descriptorArray
-          })
+          body: JSON.stringify({ action: 'register', name: name, descriptor: descriptorArray })
         });
 
         statusDiv.style.color = "green";

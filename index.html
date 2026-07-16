@@ -14,34 +14,34 @@
     video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
     #status { margin: 15px auto; max-width: 400px; font-weight: bold; color: #555; font-size: 16px; line-height: 1.5; }
     .alert-box { padding: 15px; border: 1px dashed red; background: #fff5f5; border-radius: 5px; text-align: left; }
-    a { display: inline-block; margin-top: 20px; color: #007bff; text-decoration: none; }
+    a { display: inline-block; margin-top: 20px; color: #007bff; text-decoration: none; font-weight: bold; }
   </style>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
 
-  <h2>📸 Hệ Thống Điểm Danh AI</h2>
-  <div id="status">Đang khởi tạo hệ thống mạng AI...</div>
+  <h2>🤖 Hệ Thống AI Điểm Danh Học Sinh</h2>
+  <div id="status">Đang khởi tạo cấu trúc mạng AI...</div>
 
   <div class="video-container">
     <video id="video" autoplay playsinline muted></video>
   </div>
 
-  <p><a href="register.html">👉 Chuyển sang trang Đăng ký khuôn mặt mới</a></p>
+  <p><a href="register.html">👤 Đi tới trang Đăng ký Khuôn mặt ➔</a></p>
 
   <script>
     const video = document.getElementById('video');
     const statusDiv = document.getElementById('status');
     
-    // Giữ nguyên link GAS API của bạn
+    // Giữ nguyên đường dẫn GAS API chuẩn của bạn
     const GAS_API = "https://script.google.com/macros/s/AKfycbz5PqDeWM_GxZaoecHDO_k7JiT4RNpOIP7UsTiQ1Cwar34b9y9w57bxbK23Ssd2BlK5/exec";
-    const MODEL_URL = "./face-api.js-master/weights/";
+    const MODEL_URL = './face-api.js-master/weights/';
     let faceMatcher = null;
 
-      // --- CƠ CHẾ KHÓA CHỐNG TRÙNG LẶP NÂNG CAO ---
-    let isProcessing = false;           // Khóa vạn năng: Bật khi AI đang phân tích HOẶC đang gửi mạng
-    const attendanceRegistry = {};     // Bản đồ lưu mốc thời gian khóa từng người
-    const COOLDOWN_TIME = 30000;        // Tăng thời gian khóa lên 30 giây cho chắc chắn không bị spam
+    // --- CƠ CHẾ KHÓA CHỐNG TRÙNG LẶP NÂNG CAO ---
+    let isProcessing = false;           // Khóa vạn năng: Bật khi AI đang phân tích hình ảnh HOẶC đang gửi mạng
+    const attendanceRegistry = {};     // Bản đồ lưu mốc thời gian khóa riêng cho từng học sinh
+    const COOLDOWN_TIME = 30000;        // Thời gian khóa (30 giây) giúp tránh spam khi đứng lâu trước cam
 
     async function init() {
       startCamera();
@@ -57,17 +57,17 @@
         statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
         
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         
         statusDiv.style.color = "blue";
-        statusDiv.innerText = "Mạng AI đã nạp! Đang đồng bộ danh sách học sinh từ Google Sheets...";
+        statusDiv.innerText = "Mạng AI đã nạp! Đang đồng bộ danh sách khuôn mặt từ Google Sheets...";
         
         await loadStudentsData();
       } catch (error) {
         statusDiv.style.color = "red";
         statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
-        console.error(error);
+        console.error("Chi tiết lỗi nạp model:", error);
       }
     }
 
@@ -82,12 +82,13 @@
             return new faceapi.LabeledFaceDescriptors(item.name, descriptors);
           });
           
-          faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+          // Siết chặt Threshold từ 0.6 xuống 0.42 để chống nhận diện nhầm chỏm tóc hoặc góc nghiêng nhiễu
+          faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.42);
           statusDiv.style.color = "green";
-          statusDiv.innerText = "🤖 Hệ thống AI sẵn sàng! Mời học sinh đứng trước camera để điểm danh.";
+          statusDiv.innerText = "🤖 Hệ thống AI đã sẵn sàng! Mời học sinh nhìn thẳng vào camera để điểm danh.";
         } else {
           statusDiv.style.color = "orange";
-          statusDiv.innerText = "Chưa có dữ liệu học sinh. Vui lòng đăng ký trước!";
+          statusDiv.innerText = "Chưa có dữ liệu học sinh nào trong Sheets. Vui lòng qua trang đăng ký trước!";
         }
       } catch (error) {
         statusDiv.style.color = "red";
@@ -104,20 +105,30 @@
       navigator.mediaDevices.getUserMedia(constraints)
         .then(stream => {
           video.srcObject = stream;
-          // Quét liên tục mỗi 1.5 giây để đảm bảo nhạy nhưng không quá dày đặc
+          // Quét liên tục mỗi 1.5 giây để đảm bảo nhận diện nhạy nhưng không gây quá tải cho CPU
           setInterval(recognizeFace, 1500); 
         })
         .catch(err => {
           statusDiv.style.color = "red";
-          statusDiv.innerText = "Lỗi Camera: " + err.message;
+          if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+            statusDiv.innerHTML = `
+              <div class="alert-box">
+                <p>⚠️ <strong>Chưa cấp quyền Camera!</strong></p>
+                <p style="font-size: 14px; color: #555; margin:0;">
+                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> trên thanh địa chỉ ➔ Chọn <strong>Cho phép Camera</strong>, sau đó tải lại trang.
+                </p>
+              </div>`;
+          } else {
+            statusDiv.innerText = "Lỗi Camera: " + err.message;
+          }
         });
     }
 
     async function recognizeFace() {
-      // Nếu hệ thống đang bận xử lý (quét mặt/gửi mạng) thì hủy ngay lượt quét này để tránh chồng chéo luồng
+      // Nếu AI chưa sẵn sàng hoặc hệ thống đang bận xử lý (quét mặt/gửi mạng) thì lập tức hủy lượt quét này
       if (!faceMatcher || isProcessing) return;
       
-      // Kích hoạt khóa vạn năng ngay lập tức khi bắt đầu quét
+      // Kích hoạt khóa vạn năng ngay lập tức khi bắt đầu quy trình
       isProcessing = true; 
 
       try {
@@ -128,43 +139,47 @@
         if (detection) {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
           const recognizedName = bestMatch.label;
+          const matchDistance = bestMatch.distance; // Lấy khoảng cách sai lệch Euclidean
 
-          if (recognizedName !== 'unknown') {
+          // CHỈ chấp nhận khi khớp tên học sinh VÀ độ sai lệch phải cực kỳ thấp (<= 0.42)
+          if (recognizedName !== 'unknown' && matchDistance <= 0.42) {
             const now = Date.now();
             const lastCheckedTime = attendanceRegistry[recognizedName] || 0;
 
-            // KIỂM TRA COOLDOWN: Nếu người này vừa quét chưa quá 30 giây
+            // KIỂM TRA COOLDOWN ĐỘC LẬP: Nếu học sinh này vừa quét chưa quá 30 giây
             if ((now - lastCheckedTime) < COOLDOWN_TIME) {
               const timeLeft = Math.ceil((COOLDOWN_TIME - (now - lastCheckedTime)) / 1000);
               statusDiv.style.color = "purple";
               statusDiv.innerText = `⏳ [Chờ] ${recognizedName} đã điểm danh. Vui lòng đợi ${timeLeft}s.`;
               
-              // Mở khóa vạn năng vì lượt này chỉ là thông báo chờ, không gửi mạng
+              // Mở khóa vạn năng để đón lượt quét tiếp theo của người khác, không gửi mạng
               isProcessing = false; 
               return; 
             }
 
-            // Cập nhật mốc thời gian khóa người này tại Frontend ngay lập tức
+            // Cập nhật mốc thời gian khóa học sinh này tại Frontend ngay trước khi gọi fetch mạng
             attendanceRegistry[recognizedName] = now;
 
+            // Tính toán tỷ lệ phần trăm chính xác dựa trên khoảng cách
+            const accuracyPercent = Math.round((1 - matchDistance) * 100);
             statusDiv.style.color = "blue";
-            statusDiv.innerText = `🎉 Nhận diện: ${recognizedName}! Đang ghi nhận lên Google Sheets...`;
+            statusDiv.innerText = `🎉 Nhận diện chuẩn: ${recognizedName} (${accuracyPercent}%)! Đang ghi nhận lên Sheets...`;
             
-            // Tiến hành gửi mạng và ĐỢI cho đến khi kết thúc hoàn toàn
+            // Tiến hành gửi mạng lên Google và ĐỢI kết quả hoàn toàn bằng await
             await sendAttendance(recognizedName);
           } else {
+            // Lọt vào đây nếu chỉ thấy chỏm tóc, vật thể lạ hoặc góc mặt quá nghiêng nhiễu (distance > 0.42)
             statusDiv.style.color = "orange";
-            statusDiv.innerText = "⚠️ Khuôn mặt chưa rõ nét hoặc không khớp danh sách!";
-            // Mở khóa để lượt sau quét tiếp
+            statusDiv.innerText = "⚠️ Đang quét... Hãy nhìn thẳng vào camera để điểm danh!";
             isProcessing = false; 
           }
         } else {
-          // Không thấy khuôn mặt nào trước cam, mở khóa cho lượt sau
+          // Không phát hiện khuôn mặt nào trong khung hình
           isProcessing = false; 
         }
       } catch (err) {
-        console.error("Lỗi trong quá trình nhận diện:", err);
-        isProcessing = false; // Đảm bảo luôn mở khóa nếu code gặp crash ngầm
+        console.error("Lỗi trong quá trình nhận diện AI:", err);
+        isProcessing = false; // Đảm bảo luôn giải phóng luồng nếu code gặp lỗi crash ngầm
       }
     }
 
@@ -185,18 +200,20 @@
           statusDiv.innerText = `✅ ĐÃ ĐIỂM DANH THÀNH CÔNG: ${nameToSend}`;
         } else {
           statusDiv.style.color = "red";
-          statusDiv.innerText = `❌ Lỗi từ Sheet: ` + result.message;
+          statusDiv.innerText = `❌ Lỗi từ Google Sheet: ` + result.message;
         }
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi đường truyền mạng: " + error.message;
+        statusDiv.innerText = "Lỗi kết nối mạng: " + error.message;
+        console.error("Chi tiết lỗi gửi điểm danh:", error);
       } finally {
-        // CHỈ mở khóa vạn năng sau khi Google Sheets đã xử lý xong và phản hồi mạng thành công!
+        // CHỈ mở khóa vạn năng sau khi Google Sheets phản hồi kết quả mạng xong xuôi!
         isProcessing = false;
       }
     }
 
     window.onload = init;
+
   </script>
 </body>
 </html>

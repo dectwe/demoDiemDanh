@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ai-attendance-v1';
+const CACHE_NAME = 'demoDiemDanh';
 const urlsToCache = [
   '/',
   '/index.html',

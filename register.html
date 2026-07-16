@@ -37,15 +37,14 @@
 
   <p><a href="index.html">⬅️ Quay lại trang Điểm danh</a></p>
 
-  <script>
+ <script>
     const video = document.getElementById('video');
     const statusDiv = document.getElementById('status');
     const studentNameInput = document.getElementById('studentName');
     const regBtn = document.getElementById('regBtn');
-    
+     
     const GAS_API = "https://script.google.com/macros/s/AKfycbzYeFb2w_0Jn-s1SR1FCatFKo4MUC4Mn3R6D21iT4Lv-N69jSxnHMY8_eI4EIqiOZ-m/exec";
-    // Lấy trực tiếp tên miền hiện tại để ghép đường dẫn chuẩn xác nhất
-const MODEL_URL = './face-api.js-master/weights/';
+    const MODEL_URL = './face-api.js-master/weights/';
 
     async function init() {
       startCamera();
@@ -59,12 +58,11 @@ const MODEL_URL = './face-api.js-master/weights/';
       try {
         statusDiv.style.color = "#555";
         statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
-        
-        // Cập nhật từ loadFromDisk sang loadFromUri chuẩn Web Browser
+         
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        
+         
         statusDiv.style.color = "green";
         statusDiv.innerText = "Mạng AI đã sẵn sàng! Mời nhập tên và chụp hình khuôn mặt.";
         studentNameInput.disabled = false;
@@ -134,7 +132,6 @@ const MODEL_URL = './face-api.js-master/weights/';
           })
         });
 
-        // ĐỌC PHẢN HỒI THỰC TẾ TỪ GOOGLE APPS SCRIPT
         const result = await response.json(); 
 
         if (result.status === "success") {
@@ -142,7 +139,6 @@ const MODEL_URL = './face-api.js-master/weights/';
           statusDiv.innerText = `✅ Đăng ký THÀNH CÔNG dữ liệu cho: ${name}`;
           studentNameInput.value = "";
         } else {
-          // Nếu Google Apps Script trả về lỗi, nó sẽ hiển thị ở đây
           statusDiv.style.color = "red";
           statusDiv.innerText = `❌ Lỗi từ Google Sheet: ${result.message}`;
         }
@@ -153,9 +149,11 @@ const MODEL_URL = './face-api.js-master/weights/';
       } finally {
         regBtn.disabled = false;
       }
+    } // HÀM REGISTER ĐÃ ĐƯỢC ĐÓNG NGOẶC CHUẨN XÁC TẠI ĐÂY
 
+    // Đưa luồng khởi chạy và Service Worker độc lập hoàn toàn ở bên ngoài
     window.onload = init;
-      // Đăng ký Service Worker để kích hoạt tính năng PWA và chạy Offline
+     
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')

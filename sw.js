@@ -4,6 +4,7 @@ const ASSETS = [
   '/index.html',
   '/register.html',
   '/manifest.json',
+  '/face-api-local.js',
   
   '/face-api.js-master/weights/ssd_mobilenetv1_model-weights_manifest.json',
   '/face-api.js-master/weights/ssd_mobilenetv1_model-shard1',

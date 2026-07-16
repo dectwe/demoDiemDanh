@@ -121,19 +121,28 @@
       const descriptorArray = Array.from(detection.descriptor);
 
       try {
-        await fetch(GAS_API, {
+        // Thay đổi cấu trúc Fetch để bypass CORS của Google Apps Script chuẩn xác
+        const response = await fetch(GAS_API, {
           method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'register', name: name, descriptor: descriptorArray })
+          headers: {
+            // Sử dụng text/plain nhưng gửi chuỗi JSON, đây là mẹo kinh điển để Apps Script nhận được dữ liệu không bị chặn CORS
+            'Content-Type': 'text/plain;charset=utf-8' 
+          },
+          body: JSON.stringify({
+            action: 'register',
+            name: name,
+            descriptor: descriptorArray
+          })
         });
 
+        // Nếu bạn muốn kiểm tra xem Google Script thực sự trả về gì (nếu có cấu hình trả về)
         statusDiv.style.color = "green";
         statusDiv.innerText = `✅ Đăng ký thành công dữ liệu cho: ${name}`;
         studentNameInput.value = "";
       } catch (error) {
         statusDiv.style.color = "red";
         statusDiv.innerText = "Lỗi đồng bộ: " + error.message;
+        console.error(error);
       } finally {
         regBtn.disabled = false;
       }

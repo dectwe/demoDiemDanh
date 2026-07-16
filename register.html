@@ -3,135 +3,151 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Đăng ký Học Sinh Mới</title>
-  <link rel="manifest" href="manifest.json">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+  <title>AI Điểm Danh - Đăng Ký Khuôn Mặt</title>
+  
+  <!-- Nhúng thư viện face-api chuẩn trước -->
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.clean.js"></script>
+  
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; background: #f4f4f9; }
-    .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    input, button { width: 90%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
-    button { background: #28a745; color: white; cursor: pointer; font-weight: bold; }
-    button:disabled { background: #cccccc; cursor: not-allowed; }
-    #video-container { position: relative; margin: 15px auto; width: 320px; height: 240px; background: #000; border-radius: 8px; overflow: hidden; }
+    body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
+    h2 { color: #333; }
+    .video-container { position: relative; width: 320px; height: 240px; margin: 20px auto; background: #000; border-radius: 10px; overflow: hidden; }
     video { width: 100%; height: 100%; object-fit: cover; }
-    .status { color: blue; font-weight: bold; margin: 10px; }
+    #status { margin: 15px auto; max-width: 400px; font-weight: bold; color: #555; font-size: 16px; line-height: 1.5; }
+    .alert-box { padding: 15px; border: 1px dashed red; background: #fff5f5; border-radius: 5px; text-align: left; }
+    input[type="text"] { padding: 10px; width: 200px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px; }
+    button { padding: 10px 20px; font-size: 16px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    a { display: inline-block; margin-top: 20px; color: #007bff; text-decoration: none; }
   </style>
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
 
-<div class="container">
-  <h2>📝 ĐĂNG KÝ HỌC SINH</h2>
-  <input type="text" id="mssv" placeholder="Nhập Mã số học sinh (MSSV)">
-  <input type="text" id="hoten" placeholder="Nhập Họ và Tên">
-  <input type="text" id="lop" placeholder="Nhập Tên lớp">
-  
-  <div id="video-container">
-    <video id="video" autoplay playsinline></video>
+  <h2>👤 Đăng Ký Khuôn Mặt Học Sinh</h2>
+  <div id="status">Đang tải cấu trúc mạng AI từ Cloud...</div>
+
+  <div class="video-container">
+    <video id="video" autoplay playsinline muted></video>
   </div>
-  
-  <div class="status" id="status">Đang tải cấu trúc mạng AI từ Cloud... Vui lòng đợi</div>
-  <button id="btn-register" disabled>Chụp & Đăng Ký</button>
-  <p><a href="index.html">Chuyển sang trang Điểm Danh ➔</a></p>
-</div>
 
-<script>
-  // ⚠️ THAY URL WEB APP GOOGLE APPS SCRIPT CỦA BẠN VÀO ĐÂY
-  const GAS_API = "THAY_URL_DEPLOY_GAS_CỦA_BẠN_VÀO_ĐÂY"; 
-  
-  // Link CDN chứa các file Model AI trực tuyến công cộng
-  const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
+  <div>
+    <input type="text" id="studentName" placeholder="Nhập Họ và Tên học sinh..." disabled><br>
+    <button id="regBtn" onclick="registerFace()" disabled>📸 Chụp & Đăng Ký</button>
+  </div>
 
-  const video = document.getElementById('video');
-  const statusDiv = document.getElementById('status');
-  const btnRegister = document.getElementById('btn-register');
+  <p><a href="index.html">⬅️ Quay lại trang Điểm danh</a></p>
 
-  // Đăng ký Service Worker cho PWA
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js');
-  }
-
-  // Tải các Model AI
-  async function init() {
-    try {
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-      await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
-      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-      statusDiv.innerText = "AI đã sẵn sàng! Đang mở camera sau...";
-      startCamera();
-    } catch (err) {
-      statusDiv.innerText = "Lỗi tải Model AI: " + err.message;
-      console.error(err);
-    }
-  }
-
-  // Mở Camera Sau (Environment)
-  function startCamera() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-      .then(stream => {
-        video.srcObject = stream;
-        statusDiv.innerText = "Căn chỉnh mặt vào khung hình và ấn nút.";
-        btnRegister.disabled = false;
-      })
-      .catch(err => {
-        statusDiv.innerText = "Không truy cập được camera sau. Thử lại hoặc cấp quyền.";
-      });
-  }
-
-  // Xử lý sự kiện bấm nút Đăng ký
-  btnRegister.addEventListener('click', async () => {
-    const mssv = document.getElementById('mssv').value.trim();
-    const hoten = document.getElementById('hoten').value.trim();
-    const lop = document.getElementById('lop').value.trim();
-
-    if (!mssv || !hoten || !lop) {
-      alert("Vui lòng điền đầy đủ thông tin!");
-      return;
-    }
-
-    statusDiv.innerText = "Đang quét khuôn mặt...";
-    btnRegister.disabled = true;
-
-    // Trích xuất vector
-    const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
+  <script>
+    const video = document.getElementById('video');
+    const statusDiv = document.getElementById('status');
+    const studentNameInput = document.getElementById('studentName');
+    const regBtn = document.getElementById('regBtn');
     
-    if (!detection) {
-      statusDiv.innerText = "Không tìm thấy khuôn mặt! Hãy thử lại.";
-      btnRegister.disabled = false;
-      return;
+    // -----------------------------------------------------------------
+    // CẤU HÌNH: Dán đường dẫn Web App Google Apps Script (/exec) của bạn vào đây
+    const GAS_API = "DÁN_LINK_WEB_APP_APPS_SCRIPT_CỦA_BẠN_Ở_ĐÂY";
+    // -----------------------------------------------------------------
+    
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
+
+    async function init() {
+      try {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        
+        statusDiv.innerText = "Mạng AI đã nạp xong. Đang kích hoạt camera...";
+        startCamera();
+      } catch (error) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi khởi tạo AI: " + error.message;
+      }
     }
 
-    statusDiv.innerText = "Tìm thấy khuôn mặt! Đang gửi lên dữ liệu...";
-    
-    // Convert mảng vector thành chuỗi String JSON để gửi sang Sheet
-    const faceVectorString = JSON.stringify(Array.from(detection.descriptor));
+    function startCamera() {
+      const constraints = {
+        audio: false,
+        video: { facingMode: "environment", width: 320, height: 240 } // Dùng camera sau để giáo viên dễ quét mặt học sinh
+      };
 
-    const payload = {
-      action: "register",
-      mssv: mssv,
-      hoten: hoten,
-      lop: lop,
-      faceVector: faceVectorString
-    };
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+          video.srcObject = stream;
+          video.play().catch(e => console.error("Lỗi tự động phát video:", e));
+          
+          statusDiv.style.color = "green";
+          statusDiv.innerText = "Camera đã sẵn sàng! Mời nhập tên và chụp hình khuôn mặt.";
+          studentNameInput.disabled = false;
+          regBtn.disabled = false;
+        })
+        .catch(err => {
+          statusDiv.style.color = "red";
+          if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+            statusDiv.innerHTML = `
+              <div class="alert-box">
+                <p>⚠️ <strong>Ứng dụng chưa được cấp quyền mở Camera!</strong></p>
+                <p style="font-size: 14px; color: #555; margin:0;">
+                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Bật <strong>Cho phép Camera</strong>, sau đó F5 tải lại trang.
+                </p>
+              </div>`;
+          } else {
+            statusDiv.innerText = "Lỗi thiết bị Camera: " + err.message;
+          }
+        });
+    }
 
-    // Gửi sang GAS bằng phương thức POST
-    fetch(GAS_API, {
-      method: "POST",
-      mode: "no-cors", // Tránh lỗi CORS từ Google Apps Script
-      body: JSON.stringify(payload)
-    })
-    .then(() => {
-      statusDiv.innerText = `Đăng ký thành công học sinh: ${hoten}!`;
-      document.getElementById('mssv').value = "";
-      document.getElementById('hoten').value = "";
-      btnRegister.disabled = false;
-    })
-    .catch(err => {
-      statusDiv.innerText = "Lỗi khi gửi dữ liệu lên Google Sheets.";
-      btnRegister.disabled = false;
-    });
-  });
+    async function registerFace() {
+      const name = studentNameInput.value.trim();
+      if (!name) {
+        alert("Vui lòng nhập họ tên học sinh trước khi chụp!");
+        return;
+      }
 
-  window.onload = init;
-</script>
+      regBtn.disabled = true;
+      statusDiv.style.color = "#555";
+      statusDiv.innerText = "Đang phân tích khuôn mặt... Giữ yên camera.";
+
+      const detection = await faceapi.detectSingleFace(video)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "❌ Không tìm thấy khuôn mặt trong khung hình! Thử lại.";
+        regBtn.disabled = false;
+        return;
+      }
+
+      statusDiv.innerText = "Đang tải dữ liệu khuôn mặt lên bộ nhớ Google Sheets...";
+      
+      // Chuyển mảng mã hóa vector sang mảng số thông thường để gửi JSON
+      const descriptorArray = Array.from(detection.descriptor);
+
+      try {
+        const response = await fetch(GAS_API, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register',
+            name: name,
+            descriptor: descriptorArray
+          })
+        });
+
+        statusDiv.style.color = "green";
+        statusDiv.innerText = `✅ Đăng ký thành công dữ liệu cho: ${name}`;
+        studentNameInput.value = "";
+      } catch (error) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi đồng bộ dữ liệu: " + error.message;
+      } finally {
+        regBtn.disabled = false;
+      }
+    }
+
+    window.onload = init;
+  </script>
 </body>
 </html>

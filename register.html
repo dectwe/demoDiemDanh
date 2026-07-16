@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Điểm Danh - Đăng Ký Khuôn Mặt</title>
   
-  <!-- Nhúng thư viện face-api chuẩn trước -->
-  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.clean.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/dist/face-api.min.js"></script>
   
   <style>
     body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
@@ -44,38 +43,40 @@
     const studentNameInput = document.getElementById('studentName');
     const regBtn = document.getElementById('regBtn');
     
-    // -----------------------------------------------------------------
-    // CẤU HÌNH: Dán đường dẫn Web App Google Apps Script (/exec) của bạn vào đây
+    // ⚠️ HÃY THAY LINK WEB APP GOOGLE APPS SCRIPT (/exec) CỦA BẠN VÀO ĐÂY
     const GAS_API = "https://script.google.com/macros/s/AKfycbz5PqDeWM_GxZaoecHDO_k7JiT4RNpOIP7UsTiQ1Cwar34b9y9w57bxbK23Ssd2BlK5/exec";
-    // -----------------------------------------------------------------
     
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
 
     async function init() {
+      if (typeof faceapi === 'undefined') {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi: Trình duyệt chưa tải được thư viện face-api!";
+        return;
+      }
+
       try {
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         
         statusDiv.innerText = "Mạng AI đã nạp xong. Đang kích hoạt camera...";
         startCamera();
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi khởi tạo AI: " + error.message;
+        statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
       }
     }
 
     function startCamera() {
       const constraints = {
         audio: false,
-        video: { facingMode: "environment", width: 320, height: 240 } // Dùng camera sau để giáo viên dễ quét mặt học sinh
+        video: { facingMode: "environment", width: 320, height: 240 } // Cam sau cho đăng ký
       };
 
       navigator.mediaDevices.getUserMedia(constraints)
         .then(stream => {
           video.srcObject = stream;
-          video.play().catch(e => console.error("Lỗi tự động phát video:", e));
-          
           statusDiv.style.color = "green";
           statusDiv.innerText = "Camera đã sẵn sàng! Mời nhập tên và chụp hình khuôn mặt.";
           studentNameInput.disabled = false;
@@ -86,13 +87,13 @@
           if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
             statusDiv.innerHTML = `
               <div class="alert-box">
-                <p>⚠️ <strong>Ứng dụng chưa được cấp quyền mở Camera!</strong></p>
+                <p>⚠️ <strong>Chưa cấp quyền Camera!</strong></p>
                 <p style="font-size: 14px; color: #555; margin:0;">
-                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Bật <strong>Cho phép Camera</strong>, sau đó F5 tải lại trang.
+                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Chọn <strong>Cho phép Camera</strong>, sau đó tải lại trang.
                 </p>
               </div>`;
           } else {
-            statusDiv.innerText = "Lỗi thiết bị Camera: " + err.message;
+            statusDiv.innerText = "Lỗi Camera: " + err.message;
           }
         });
     }
@@ -114,18 +115,16 @@
 
       if (!detection) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "❌ Không tìm thấy khuôn mặt trong khung hình! Thử lại.";
+        statusDiv.innerText = "❌ Không tìm thấy khuôn mặt! Hãy căn chỉnh lại góc và thử lại.";
         regBtn.disabled = false;
         return;
       }
 
       statusDiv.innerText = "Đang tải dữ liệu khuôn mặt lên bộ nhớ Google Sheets...";
-      
-      // Chuyển mảng mã hóa vector sang mảng số thông thường để gửi JSON
       const descriptorArray = Array.from(detection.descriptor);
 
       try {
-        const response = await fetch(GAS_API, {
+        await fetch(GAS_API, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
@@ -141,7 +140,7 @@
         studentNameInput.value = "";
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi đồng bộ dữ liệu: " + error.message;
+        statusDiv.innerText = "Lỗi đồng bộ: " + error.message;
       } finally {
         regBtn.disabled = false;
       }

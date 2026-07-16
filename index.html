@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Điểm Danh - Quét Khuôn Mặt</title>
   
-  <!-- Nhúng thư viện face-api chuẩn trước -->
-  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.clean.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/dist/face-api.min.js"></script>
   
   <style>
     body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
     h2 { color: #333; }
     .video-container { position: relative; width: 320px; height: 240px; margin: 20px auto; background: #000; border-radius: 10px; overflow: hidden; }
-    video { width: 100%; height: 100%; object-fit: cover; }
+    video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
     #status { margin: 15px auto; max-width: 400px; font-weight: bold; color: #555; font-size: 16px; line-height: 1.5; }
     .alert-box { padding: 15px; border: 1px dashed red; background: #fff5f5; border-radius: 5px; text-align: left; }
     a { display: inline-block; margin-top: 20px; color: #007bff; text-decoration: none; }
@@ -34,26 +33,33 @@
     const video = document.getElementById('video');
     const statusDiv = document.getElementById('status');
     
-    // -----------------------------------------------------------------
-    // CẤU HÌNH: Dán đường dẫn Web App Google Apps Script (/exec) của bạn vào đây
+    // ⚠️ HÃY THAY LINK WEB APP GOOGLE APPS SCRIPT (/exec) CỦA BẠN VÀO ĐÂY
     const GAS_API = "https://script.google.com/macros/s/AKfycbz5PqDeWM_GxZaoecHDO_k7JiT4RNpOIP7UsTiQ1Cwar34b9y9w57bxbK23Ssd2BlK5/exec";
-    // -----------------------------------------------------------------
     
+    // Link CDN chứa các file trọng số (weights) của AI
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
     let faceMatcher = null;
 
     async function init() {
+      // Kiểm tra xem thư viện đã được load vào window chưa
+      if (typeof faceapi === 'undefined') {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi: Trình duyệt chưa tải được thư viện face-api. Hãy kiểm tra kết nối mạng!";
+        return;
+      }
+
       try {
-        // Tải các model AI cần thiết
+        // Tải các cấu trúc mạng AI từ Cloud CDN
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         
         statusDiv.innerText = "Đang tải dữ liệu học sinh từ Google Sheets...";
         await loadStudentsData();
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi khởi tạo AI: " + error.message;
+        statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
+        console.error(error);
       }
     }
 
@@ -77,20 +83,19 @@
         }
       } catch (error) {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Không thể kết nối dữ liệu: " + error.message;
+        statusDiv.innerText = "Không thể kết nối dữ liệu Sheet: " + error.message;
       }
     }
 
     function startCamera() {
       const constraints = {
         audio: false,
-        video: { facingMode: "user", width: 320, height: 240 } // Dùng camera trước để điểm danh
+        video: { facingMode: "user", width: 320, height: 240 } // Cam trước cho điểm danh
       };
 
       navigator.mediaDevices.getUserMedia(constraints)
         .then(stream => {
           video.srcObject = stream;
-          video.play().catch(e => console.error("Lỗi tự động phát video:", e));
           statusDiv.innerText = "Camera hoạt động. Hãy nhìn thẳng để quét...";
           
           // Bắt đầu nhận diện lặp lại sau mỗi 2 giây
@@ -101,13 +106,13 @@
           if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
             statusDiv.innerHTML = `
               <div class="alert-box">
-                <p>⚠️ <strong>Ứng dụng chưa được cấp quyền mở Camera!</strong></p>
+                <p>⚠️ <strong>Chưa cấp quyền Camera!</strong></p>
                 <p style="font-size: 14px; color: #555; margin:0;">
-                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Bật <strong>Cho phép Camera</strong>, sau đó F5 tải lại trang.
+                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Chọn <strong>Cho phép Camera</strong>, sau đó tải lại trang.
                 </p>
               </div>`;
           } else {
-            statusDiv.innerText = "Lỗi thiết bị Camera: " + err.message;
+            statusDiv.innerText = "Lỗi Camera: " + err.message;
           }
         });
     }
@@ -123,25 +128,25 @@
         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
         if (bestMatch.label !== 'unknown') {
           statusDiv.style.color = "green";
-          statusDiv.innerText = `🎉 Xin chào: ${bestMatch.label}! Đang ghi nhận điểm danh...`;
+          statusDiv.innerText = `🎉 Xin chào: ${bestMatch.label}! Đang ghi nhận...`;
           await sendAttendance(bestMatch.label);
         } else {
           statusDiv.style.color = "orange";
-          statusDiv.innerText = "⚠️ Khuôn mặt không khớp với danh sách học sinh!";
+          statusDiv.innerText = "⚠️ Khuôn mặt không khớp với danh sách!";
         }
       }
     }
 
     async function sendAttendance(name) {
       try {
-        const response = await fetch(GAS_API, {
+        await fetch(GAS_API, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'checkin', name: name })
         });
         statusDiv.style.color = "green";
-        statusDiv.innerText = `✅ Điểm danh THÀNH CÔNG cho học sinh: ${name}`;
+        statusDiv.innerText = `✅ Điểm danh THÀNH CÔNG học sinh: ${name}`;
       } catch (error) {
         console.error("Lỗi gửi điểm danh:", error);
       }

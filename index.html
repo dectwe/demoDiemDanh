@@ -33,18 +33,22 @@
     const video = document.getElementById('video');
     const statusDiv = document.getElementById('status');
     
-    const GAS_API = "https://script.google.com/macros/s/AKfycbzYeFb2w_0Jn-s1SR1FCatFKo4MUC4Mn3R6D21iT4Lv-N69jSxnHMY8_eI4EIqiOZ-m/exec";
+    // Giữ nguyên link GAS API của bạn
+    const GAS_API = "https://script.google.com/macros/s/AKfycbz5PqDeWM_GxZaoecHDO_k7JiT4RNpOIP7UsTiQ1Cwar34b9y9w57bxbK23Ssd2BlK5/exec";
     const MODEL_URL = './face-api.js-master/weights/';
     let faceMatcher = null;
 
+    // --- CƠ CHẾ KHÓA CHỐNG TRÙNG LẶP NÂNG CAO ---
+    let isSending = false;              // Khóa tổng: Ngăn quét khi đang trong quá trình Fetch mạng
+    const attendanceRegistry = {};     // Bản đồ lưu mốc thời gian: { "Nguyen Van A": mốc_mili_giây, "Tran Van B": mốc_mili_giây }
+    const COOLDOWN_TIME = 20000;        // Thời gian khóa mỗi người (20 giây) để tránh spam
+
     async function init() {
-      // 1. Mở camera ngay lập tức
       startCamera();
 
-      // 2. Kiểm tra thư viện
       if (typeof faceapi === 'undefined') {
         statusDiv.style.color = "red";
-        statusDiv.innerText = "Lỗi: Trình duyệt chưa kích hoạt được thư viện face-api local. Hãy kiểm tra lại file face-api-local.js!";
+        statusDiv.innerText = "Lỗi: Trình duyệt chưa kích hoạt được thư viện face-api local.";
         return;
       }
 
@@ -52,19 +56,18 @@
         statusDiv.style.color = "#555";
         statusDiv.innerText = "Đang tải các cấu trúc mạng AI từ thư mục Local...";
         
-        // Cập nhật từ loadFromDisk sang loadFromUri chuẩn Web Browser
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         
         statusDiv.style.color = "blue";
-        statusDiv.innerText = "Mạng AI nội bộ đã nạp xong! Đang tải dữ liệu học sinh từ Sheets...";
+        statusDiv.innerText = "Mạng AI đã nạp! Đang đồng bộ danh sách học sinh từ Google Sheets...";
         
         await loadStudentsData();
       } catch (error) {
         statusDiv.style.color = "red";
         statusDiv.innerText = "Lỗi nạp mạng AI: " + error.message;
-        console.error("Chi tiết lỗi nạp model:", error);
+        console.error(error);
       }
     }
 
@@ -81,10 +84,10 @@
           
           faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
           statusDiv.style.color = "green";
-          statusDiv.innerText = "Hệ thống đã sẵn sàng. Hãy nhìn thẳng để điểm danh!";
+          statusDiv.innerText = "🤖 Hệ thống AI sẵn sàng! Mời học sinh đứng trước camera để điểm danh.";
         } else {
           statusDiv.style.color = "orange";
-          statusDiv.innerText = "Chưa có dữ liệu học sinh nào. Hãy đi đăng ký trước!";
+          statusDiv.innerText = "Chưa có dữ liệu học sinh. Vui lòng đăng ký trước!";
         }
       } catch (error) {
         statusDiv.style.color = "red";
@@ -93,71 +96,96 @@
     }
 
     function startCamera() {
-      const constraints = { audio: false, video: { facingMode: "user", width: 320, height: 240 } };
+      const constraints = {
+        audio: false,
+        video: { facingMode: "user", width: 320, height: 240 }
+      };
+
       navigator.mediaDevices.getUserMedia(constraints)
         .then(stream => {
           video.srcObject = stream;
-          if(!faceMatcher) {
-             statusDiv.innerText = "Camera hoạt động. Đang nạp cấu trúc AI...";
-          }
-          setInterval(recognizeFace, 2000);
+          // Quét liên tục mỗi 1.5 giây để đảm bảo nhạy nhưng không quá dày đặc
+          setInterval(recognizeFace, 1500); 
         })
         .catch(err => {
           statusDiv.style.color = "red";
-          if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-            statusDiv.innerHTML = `
-              <div class="alert-box">
-                <p>⚠️ <strong>Chưa cấp quyền Camera!</strong></p>
-                <p style="font-size: 14px; color: #555; margin:0;">
-                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> trên thanh địa chỉ ➔ Chọn <strong>Cho phép Camera</strong>, sau đó tải lại trang.
-                </p>
-              </div>`;
-          } else {
-            statusDiv.innerText = "Lỗi Camera: " + err.message;
-          }
+          statusDiv.innerText = "Lỗi Camera: " + err.message;
         });
     }
 
     async function recognizeFace() {
-      if (!faceMatcher) return;
-      const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
+      // Nếu AI chưa sẵn sàng hoặc hệ thống đang bận gửi một request khác lên mạng thì bỏ qua lượt quét này
+      if (!faceMatcher || isSending) return;
+      
+      const detection = await faceapi.detectSingleFace(video)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+        
       if (detection) {
         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-        if (bestMatch.label !== 'unknown') {
-          statusDiv.style.color = "green";
-          statusDiv.innerText = `🎉 Xin chào: ${bestMatch.label}! Đang ghi nhận...`;
-          await sendAttendance(bestMatch.label);
+        const recognizedName = bestMatch.label;
+
+        if (recognizedName !== 'unknown') {
+          const now = Date.now();
+          const lastCheckedTime = attendanceRegistry[recognizedName] || 0;
+
+          // KIỂM TRA COOLDOWN RIÊNG BIỆT: Nếu người này vừa quét chưa quá 20 giây
+          if ((now - lastCheckedTime) < COOLDOWN_TIME) {
+            const timeLeft = Math.ceil((COOLDOWN_TIME - (now - lastCheckedTime)) / 1000);
+            statusDiv.style.color = "purple";
+            statusDiv.innerText = `⏳ [Chờ] ${recognizedName} đã được ghi nhận. Vui lòng đợi ${timeLeft}s.`;
+            return; 
+          }
+
+          // Kích hoạt khóa tổng ngay lập tức để chặn các lượt quét trùng lặp trong lúc Fetch
+          isSending = true; 
+          
+          // Cập nhật mốc thời gian khóa người này ngay tại Frontend trước khi gửi dữ liệu lên mạng
+          attendanceRegistry[recognizedName] = now;
+
+          statusDiv.style.color = "blue";
+          statusDiv.innerText = `🎉 Nhận diện: ${recognizedName}! Đang gửi dữ liệu lên Google Sheets...`;
+          
+          // Chờ hàm sendAttendance thực hiện xong hoàn toàn
+          await sendAttendance(recognizedName);
         } else {
           statusDiv.style.color = "orange";
-          statusDiv.innerText = "⚠️ Khuôn mặt không khớp với danh sách!";
+          statusDiv.innerText = "⚠️ Khuôn mặt lạ, không khớp với danh sách!";
         }
       }
     }
 
-    async function sendAttendance(name) {
+    async function sendAttendance(nameToSend) {
       try {
-        await fetch(GAS_API, {
+        const response = await fetch(GAS_API, {
           method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'checkin', name: name })
+          headers: { 
+            'Content-Type': 'text/plain;charset=utf-8' 
+          },
+          // Gửi chính xác tên đã được bóc tách riêng tại thời điểm nhận diện
+          body: JSON.stringify({ action: 'checkin', name: nameToSend })
         });
-        statusDiv.style.color = "green";
-        statusDiv.innerText = `✅ Điểm danh THÀNH CÔNG học sinh: ${name}`;
+        
+        const result = await response.json();
+        
+        if (result.status === "success") {
+          statusDiv.style.color = "green";
+          statusDiv.innerText = `✅ ĐÃ ĐIỂM DANH THÀNH CÔNG: ${nameToSend}`;
+        } else {
+          statusDiv.style.color = "red";
+          statusDiv.innerText = `❌ Lỗi ghi nhận từ Sheet: ` + result.message;
+        }
       } catch (error) {
-        console.error("Lỗi gửi điểm danh:", error);
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi đường truyền: " + error.message;
+        console.error("Chi tiết lỗi gửi:", error);
+      } finally {
+        // Giải phóng khóa tổng để cho phép hệ thống nhận diện học sinh tiếp theo bước vào
+        isSending = false;
       }
     }
 
     window.onload = init;
-    // Đăng ký Service Worker để kích hoạt tính năng PWA và chạy Offline
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Kích hoạt PWA Offline thành công!', reg.scope))
-          .catch(err => console.error('Lỗi đăng ký PWA:', err));
-      });
-    }
   </script>
 </body>
 </html>

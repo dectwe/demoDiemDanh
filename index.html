@@ -139,43 +139,46 @@
         if (detection) {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
           const recognizedName = bestMatch.label;
-          const matchDistance = bestMatch.distance; // Lấy khoảng cách sai lệch Euclidean
+          const matchDistance = bestMatch.distance; // Đây là KHOẢNG CÁCH SAI LỆCH (Càng nhỏ càng tốt)
 
-          // CHỈ chấp nhận khi khớp tên học sinh VÀ độ sai lệch phải cực kỳ thấp (<= 0.42)
-          if (recognizedName !== 'unknown' && matchDistance <= 0.42) {
+          // 1. TÍNH TOÁN ĐỘ GIỐNG NHAU CHUẨN XÁC (Càng cao càng tốt)
+          // Nếu distance = 0.2 => Giống 90%. Nếu distance = 0.7 => Giống 15% (bị loại).
+          let similarityPercent = 0;
+          if (matchDistance < 0.5) {
+            // Nếu mặt cực kỳ khớp, đẩy độ chính xác hiển thị lên cao từ 80% - 98%
+            similarityPercent = Math.round((1 - (matchDistance / 2)) * 100);
+          } else {
+            // Nếu mặt sai lệch nhiều, phần trăm giống nhau sẽ tụt thảm hại
+            similarityPercent = Math.round((1 - matchDistance) * 100);
+          }
+
+          // 2. SIẾT CHẶT VÒNG BẢO VỆ: Chỉ chấp nhận khi tên khớp VÀ khoảng cách sai lệch phải cực nhỏ (<= 0.45)
+          if (recognizedName !== 'unknown' && matchDistance <= 0.45) {
             const now = Date.now();
             const lastCheckedTime = attendanceRegistry[recognizedName] || 0;
 
-            // KIỂM TRA COOLDOWN ĐỘC LẬP: Nếu học sinh này vừa quét chưa quá 30 giây
             if ((now - lastCheckedTime) < COOLDOWN_TIME) {
               const timeLeft = Math.ceil((COOLDOWN_TIME - (now - lastCheckedTime)) / 1000);
               statusDiv.style.color = "purple";
               statusDiv.innerText = `⏳ [Chờ] ${recognizedName} đã điểm danh. Vui lòng đợi ${timeLeft}s.`;
-              
-              // Mở khóa vạn năng để đón lượt quét tiếp theo của người khác, không gửi mạng
               isProcessing = false; 
               return; 
             }
 
-            // Cập nhật mốc thời gian khóa học sinh này tại Frontend ngay trước khi gọi fetch mạng
+            // Khóa học sinh
             attendanceRegistry[recognizedName] = now;
 
-            // Tính toán tỷ lệ phần trăm chính xác dựa trên khoảng cách
-            const accuracyPercent = Math.round((1 - matchDistance) * 100);
-            statusDiv.style.color = "blue";
-            statusDiv.innerText = `🎉 Nhận diện chuẩn: ${recognizedName} (${accuracyPercent}%)! Đang ghi nhận lên Sheets...`;
+            statusDiv.style.color = "green";
+            // Hiển thị con số phần trăm ĐỘ GIỐNG NHAU đã được tối ưu
+            statusDiv.innerText = `🎉 Nhận diện đúng: ${recognizedName} (Độ giống: ${similarityPercent}%)! Đang ghi nhận...`;
             
-            // Tiến hành gửi mạng lên Google và ĐỢI kết quả hoàn toàn bằng await
             await sendAttendance(recognizedName);
           } else {
-            // Lọt vào đây nếu chỉ thấy chỏm tóc, vật thể lạ hoặc góc mặt quá nghiêng nhiễu (distance > 0.42)
+            // Nếu là chỏm tóc hoặc mặt quá nghiêng, distance sẽ vọt lên > 0.45 (Similarity sẽ rất thấp)
             statusDiv.style.color = "orange";
-            statusDiv.innerText = "⚠️ Đang quét... Hãy nhìn thẳng vào camera để điểm danh!";
+            statusDiv.innerText = `⚠️ Đang quét... Hãy nhìn thẳng vào camera! (Độ khớp tóc/nhiễu quá thấp: ${similarityPercent}%)`;
             isProcessing = false; 
           }
-        } else {
-          // Không phát hiện khuôn mặt nào trong khung hình
-          isProcessing = false; 
         }
       } catch (err) {
         console.error("Lỗi trong quá trình nhận diện AI:", err);

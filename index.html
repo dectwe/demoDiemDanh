@@ -3,158 +3,151 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hệ Thống Điểm Danh Real-time</title>
-  <link rel="manifest" href="manifest.json">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+  <title>AI Điểm Danh - Quét Khuôn Mặt</title>
+  
+  <!-- Nhúng thư viện face-api chuẩn trước -->
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.clean.js"></script>
+  
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; background: #eef2f7; }
-    .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    #video-container { position: relative; margin: 15px auto; width: 320px; height: 240px; background: #000; border-radius: 8px; overflow: hidden; }
-    /* Lật gương camera trước cho tự nhiên giống selfie */
-    video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); } 
-    .status { font-size: 16px; font-weight: bold; margin: 15px; color: #333; }
-    .success-alert { color: green; font-size: 20px; font-weight: bold; }
+    body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
+    h2 { color: #333; }
+    .video-container { position: relative; width: 320px; height: 240px; margin: 20px auto; background: #000; border-radius: 10px; overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: cover; }
+    #status { margin: 15px auto; max-width: 400px; font-weight: bold; color: #555; font-size: 16px; line-height: 1.5; }
+    .alert-box { padding: 15px; border: 1px dashed red; background: #fff5f5; border-radius: 5px; text-align: left; }
+    a { display: inline-block; margin-top: 20px; color: #007bff; text-decoration: none; }
   </style>
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
 
-<div class="container">
-  <h2>📸 HỆ THỐNG ĐIỂM DANH AUTOMATIC</h2>
-  <div class="status" id="status">Đang tải mạng AI từ Cloud...</div>
-  
-  <div id="video-container">
+  <h2>📸 Hệ Thống Điểm Danh AI</h2>
+  <div id="status">Đang khởi tạo hệ thống mạng AI từ Cloud...</div>
+
+  <div class="video-container">
     <video id="video" autoplay playsinline muted></video>
   </div>
-  
-  <div id="result-box" style="margin-top: 10px; font-weight: bold;"></div>
-  <p><a href="register.html">➔ Đi đến trang thêm Học Sinh mới</a></p>
-</div>
 
-<script>
-  // ⚠️ THAY URL WEB APP GOOGLE APPS SCRIPT CỦA BẠN VÀO ĐÂY
-  const GAS_API = "THAY_URL_DEPLOY_GAS_CỦA_BẠN_VÀO_ĐÂY"; 
-  
-  // Link CDN chứa các file Model AI trực tuyến công cộng
-  const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
+  <p><a href="register.html">👉 Chuyển sang trang Đăng ký khuôn mặt mới</a></p>
 
-  const video = document.getElementById('video');
-  const statusDiv = document.getElementById('status');
-  const resultBox = document.getElementById('result-box');
-  
-  let faceMatcher = null;
-  let isProcessing = false; // Cờ ngăn việc gửi trùng lặp request liên tục
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js');
-  }
-
-  async function init() {
-    try {
-      // 1. Tải các cấu trúc mạng AI
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-      await faceapi.nets.faceLandmarks68Net.loadFromUri(MODEL_URL);
-      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-      
-      statusDiv.innerText = "Đang tải danh sách học sinh từ Google Sheet...";
-      
-      // 2. Lấy dữ liệu vector từ Google Sheets
-      const response = await fetch(GAS_API);
-      const resData = await response.json();
-      
-      if(resData.status === "success" && resData.data.length > 0) {
-        const labeledDescriptors = resData.data.map(student => {
-          const vector = new Float32Array(JSON.parse(student.faceVector));
-          // Định danh bằng chuỗi kết hợp "MSSV_HọTên"
-          return new faceapi.LabeledFaceDescriptors(`${student.mssv}_${student.hoten}`, [vector]);
-        });
-        
-        // Ngưỡng sai số 0.5 (Tỷ lệ khớp > 50% sẽ được công nhận danh tính)
-        faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
-        
-        statusDiv.innerText = "Dữ liệu lớp học đồng bộ xong! Hãy nhìn vào camera...";
-        startCamera();
-      } else {
-        statusDiv.innerText = "Chưa có học sinh nào trong hệ thống. Vui lòng đăng ký trước!";
-      }
-    } catch (err) {
-      statusDiv.innerText = "Lỗi khởi động hệ thống: " + err.message;
-      console.error(err);
-    }
-  }
-
-  // Mở Camera Trước (facingMode: "user")
-  function startCamera() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-      .then(stream => {
-        video.srcObject = stream;
-        video.addEventListener('play', onPlay);
-      })
-      .catch(err => {
-        statusDiv.innerText = "Không thể mở camera trước. Hãy kiểm tra lại quyền truy cập.";
-      });
-  }
-
-  // Vòng lặp quét Real-time liên tục
-  async function onPlay() {
-    if (video.paused || video.ended || !faceMatcher) return;
+  <script>
+    const video = document.getElementById('video');
+    const statusDiv = document.getElementById('status');
     
-    if (!isProcessing) {
-      const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
+    // -----------------------------------------------------------------
+    // CẤU HÌNH: Dán đường dẫn Web App Google Apps Script (/exec) của bạn vào đây
+    const GAS_API = "DÁN_LINK_WEB_APP_APPS_SCRIPT_CỦA_BẠN_Ở_ĐÂY";
+    // -----------------------------------------------------------------
+    
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@master/weights/';
+    let faceMatcher = null;
+
+    async function init() {
+      try {
+        // Tải các model AI cần thiết
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        
+        statusDiv.innerText = "Đang tải dữ liệu học sinh từ Google Sheets...";
+        await loadStudentsData();
+      } catch (error) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Lỗi khởi tạo AI: " + error.message;
+      }
+    }
+
+    async function loadStudentsData() {
+      try {
+        const response = await fetch(`${GAS_API}?action=get_faces`);
+        const result = await response.json();
+        
+        if (result.status === "success" && result.data.length > 0) {
+          const labeledDescriptors = result.data.map(item => {
+            const descriptors = item.descriptors.map(d => new Float32Array(d));
+            return new faceapi.LabeledFaceDescriptors(item.name, descriptors);
+          });
+          
+          faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+          statusDiv.innerText = "Mạng AI sẵn sàng. Đang mở camera trước...";
+          startCamera();
+        } else {
+          statusDiv.style.color = "orange";
+          statusDiv.innerText = "Chưa có dữ liệu học sinh nào. Hãy đi đăng ký trước!";
+        }
+      } catch (error) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Không thể kết nối dữ liệu: " + error.message;
+      }
+    }
+
+    function startCamera() {
+      const constraints = {
+        audio: false,
+        video: { facingMode: "user", width: 320, height: 240 } // Dùng camera trước để điểm danh
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+          video.srcObject = stream;
+          video.play().catch(e => console.error("Lỗi tự động phát video:", e));
+          statusDiv.innerText = "Camera hoạt động. Hãy nhìn thẳng để quét...";
+          
+          // Bắt đầu nhận diện lặp lại sau mỗi 2 giây
+          setInterval(recognizeFace, 2000);
+        })
+        .catch(err => {
+          statusDiv.style.color = "red";
+          if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+            statusDiv.innerHTML = `
+              <div class="alert-box">
+                <p>⚠️ <strong>Ứng dụng chưa được cấp quyền mở Camera!</strong></p>
+                <p style="font-size: 14px; color: #555; margin:0;">
+                  <strong>Cách sửa:</strong> Bấm vào <strong>icon ổ khóa 🔒</strong> (hoặc chữ <strong>aA</strong>) trên thanh địa chỉ ➔ Tìm mục <strong>Quyền/Cài đặt trang web</strong> ➔ Bật <strong>Cho phép Camera</strong>, sau đó F5 tải lại trang.
+                </p>
+              </div>`;
+          } else {
+            statusDiv.innerText = "Lỗi thiết bị Camera: " + err.message;
+          }
+        });
+    }
+
+    async function recognizeFace() {
+      if (!faceMatcher) return;
       
+      const detection = await faceapi.detectSingleFace(video)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+        
       if (detection) {
         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-        const label = bestMatch.toString();
-        
-        if (!label.includes("unknown")) {
-          const info = bestMatch.label.split("_");
-          const mssv = info[0];
-          const hoten = info[1];
-          
-          isProcessing = true; // Khóa tiến trình tạm thời để tránh spam request
-          triggerCheckIn(mssv, hoten);
+        if (bestMatch.label !== 'unknown') {
+          statusDiv.style.color = "green";
+          statusDiv.innerText = `🎉 Xin chào: ${bestMatch.label}! Đang ghi nhận điểm danh...`;
+          await sendAttendance(bestMatch.label);
         } else {
-          resultBox.innerHTML = `<span style="color:red">Khuôn mặt lạ (Không khớp dữ liệu lớp)</span>`;
+          statusDiv.style.color = "orange";
+          statusDiv.innerText = "⚠️ Khuôn mặt không khớp với danh sách học sinh!";
         }
-      } else {
-        resultBox.innerHTML = `<span style="color:gray">Đang quét tìm khuôn mặt...</span>`;
       }
     }
-    
-    // Thực hiện lại sau 500ms (giúp điện thoại không bị quá tải CPU như quét liên tục)
-    setTimeout(() => onPlay(), 500);
-  }
 
-  // Gửi lệnh ghi nhận Điểm danh lên Google Sheet
-  function triggerCheckIn(mssv, hoten) {
-    resultBox.innerHTML = `<div class="success-alert">🌟 Tìm thấy: ${hoten} </div><div>Đang ghi nhận điểm danh...</div>`;
-    
-    const payload = {
-      action: "checkin",
-      mssv: mssv,
-      hoten: hoten
-    };
+    async function sendAttendance(name) {
+      try {
+        const response = await fetch(GAS_API, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'checkin', name: name })
+        });
+        statusDiv.style.color = "green";
+        statusDiv.innerText = `✅ Điểm danh THÀNH CÔNG cho học sinh: ${name}`;
+      } catch (error) {
+        console.error("Lỗi gửi điểm danh:", error);
+      }
+    }
 
-    fetch(GAS_API, {
-      method: "POST",
-      mode: "no-cors",
-      body: JSON.stringify(payload)
-    })
-    .then(() => {
-      resultBox.innerHTML = `<div style="color:green; font-size:22px;">✅ ĐÃ ĐIỂM DANH: <br> <strong>${hoten}</strong></div>`;
-      
-      // Chờ hiển thị thông báo thành công trong 4 giây rồi mới tiếp tục quét người mới
-      setTimeout(() => {
-        isProcessing = false;
-        resultBox.innerHTML = "";
-      }, 4000);
-    })
-    .catch(err => {
-      isProcessing = false;
-      resultBox.innerHTML = `<span style="color:red">Lỗi ghi nhận điểm danh!</span>`;
-    });
-  }
-
-  window.onload = init;
-</script>
+    window.onload = init;
+  </script>
 </body>
 </html>

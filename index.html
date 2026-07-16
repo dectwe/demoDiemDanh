@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Điểm Danh - Quét Khuôn Mặt</title>
   
-  <script src="face-api.min.js"></script>
+  <script src="face-api.js-master/dist/face-api.min.js"></script>
   
   <style>
     body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
@@ -37,7 +37,7 @@
     const GAS_API = "https://script.google.com/macros/s/AKfycbz5PqDeWM_GxZaoecHDO_k7JiT4RNpOIP7UsTiQ1Cwar34b9y9w57bxbK23Ssd2BlK5/exec";
     
     // Link CDN chứa các file trọng số (weights) của AI
-    const MODEL_URL = './models/';
+    const MODEL_URL = './face-api.js-master/weights/';
     let faceMatcher = null;
 
     async function init() {
